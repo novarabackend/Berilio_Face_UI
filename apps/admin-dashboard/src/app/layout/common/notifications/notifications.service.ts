@@ -1,18 +1,22 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { notifications as initialNotifications } from 'app/mock-api/common/notifications/data';
 import { Notification } from 'app/layout/common/notifications/notifications.types';
-import { map, Observable, ReplaySubject, switchMap, take, tap } from 'rxjs';
+import { Observable, of, ReplaySubject } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class NotificationsService {
-    private _notifications: ReplaySubject<Notification[]> = new ReplaySubject<
-        Notification[]
-    >(1);
+    private _notifications: ReplaySubject<Notification[]> =
+        new ReplaySubject<Notification[]>(1);
+    private _store: Notification[] = initialNotifications.map(
+        (notification) => ({ ...notification })
+    );
 
     /**
      * Constructor
      */
-    constructor(private _httpClient: HttpClient) {}
+    constructor() {
+        this._emit();
+    }
 
     // -----------------------------------------------------------------------------------------------------
     // @ Accessors
@@ -33,13 +37,8 @@ export class NotificationsService {
      * Get all notifications
      */
     getAll(): Observable<Notification[]> {
-        return this._httpClient
-            .get<Notification[]>('api/common/notifications')
-            .pipe(
-                tap((notifications) => {
-                    this._notifications.next(notifications);
-                })
-            );
+        this._emit();
+        return of(this._clone(this._store));
     }
 
     /**
@@ -48,27 +47,17 @@ export class NotificationsService {
      * @param notification
      */
     create(notification: Notification): Observable<Notification> {
-        return this.notifications$.pipe(
-            take(1),
-            switchMap((notifications) =>
-                this._httpClient
-                    .post<Notification>('api/common/notifications', {
-                        notification,
-                    })
-                    .pipe(
-                        map((newNotification) => {
-                            // Update the notifications with the new notification
-                            this._notifications.next([
-                                ...notifications,
-                                newNotification,
-                            ]);
+        const newNotification: Notification = {
+            ...notification,
+            id: notification.id ?? this._createId(),
+            time: notification.time ?? new Date().toISOString(),
+            read: notification.read ?? false,
+        };
 
-                            // Return the new notification from observable
-                            return newNotification;
-                        })
-                    )
-            )
-        );
+        this._store = [...this._store, newNotification];
+        this._emit();
+
+        return of({ ...newNotification });
     }
 
     /**
@@ -78,33 +67,22 @@ export class NotificationsService {
      * @param notification
      */
     update(id: string, notification: Notification): Observable<Notification> {
-        return this.notifications$.pipe(
-            take(1),
-            switchMap((notifications) =>
-                this._httpClient
-                    .patch<Notification>('api/common/notifications', {
-                        id,
-                        notification,
-                    })
-                    .pipe(
-                        map((updatedNotification: Notification) => {
-                            // Find the index of the updated notification
-                            const index = notifications.findIndex(
-                                (item) => item.id === id
-                            );
+        const index = this._store.findIndex((item) => item.id === id);
 
-                            // Update the notification
-                            notifications[index] = updatedNotification;
+        if (index === -1) {
+            return of({ ...notification, id });
+        }
 
-                            // Update the notifications
-                            this._notifications.next(notifications);
+        const updated: Notification = {
+            ...this._store[index],
+            ...notification,
+            id,
+        };
 
-                            // Return the updated notification
-                            return updatedNotification;
-                        })
-                    )
-            )
-        );
+        this._store[index] = updated;
+        this._emit();
+
+        return of({ ...updated });
     }
 
     /**
@@ -113,58 +91,44 @@ export class NotificationsService {
      * @param id
      */
     delete(id: string): Observable<boolean> {
-        return this.notifications$.pipe(
-            take(1),
-            switchMap((notifications) =>
-                this._httpClient
-                    .delete<boolean>('api/common/notifications', {
-                        params: { id },
-                    })
-                    .pipe(
-                        map((isDeleted: boolean) => {
-                            // Find the index of the deleted notification
-                            const index = notifications.findIndex(
-                                (item) => item.id === id
-                            );
+        const initialLength = this._store.length;
+        this._store = this._store.filter((item) => item.id !== id);
+        const isDeleted = this._store.length < initialLength;
+        this._emit();
 
-                            // Delete the notification
-                            notifications.splice(index, 1);
-
-                            // Update the notifications
-                            this._notifications.next(notifications);
-
-                            // Return the deleted status
-                            return isDeleted;
-                        })
-                    )
-            )
-        );
+        return of(isDeleted);
     }
 
     /**
      * Mark all notifications as read
      */
     markAllAsRead(): Observable<boolean> {
-        return this.notifications$.pipe(
-            take(1),
-            switchMap((notifications) =>
-                this._httpClient
-                    .get<boolean>('api/common/notifications/mark-all-as-read')
-                    .pipe(
-                        map((isUpdated: boolean) => {
-                            // Go through all notifications and set them as read
-                            notifications.forEach((notification, index) => {
-                                notifications[index].read = true;
-                            });
+        this._store = this._store.map((notification) => ({
+            ...notification,
+            read: true,
+        }));
+        this._emit();
 
-                            // Update the notifications
-                            this._notifications.next(notifications);
+        return of(true);
+    }
 
-                            // Return the updated status
-                            return isUpdated;
-                        })
-                    )
-            )
-        );
+    // -----------------------------------------------------------------------------------------------------
+    // @ Private methods
+    // -----------------------------------------------------------------------------------------------------
+
+    private _emit(): void {
+        this._notifications.next(this._clone(this._store));
+    }
+
+    private _clone(notifications: Notification[]): Notification[] {
+        return notifications.map((notification) => ({ ...notification }));
+    }
+
+    private _createId(): string {
+        if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+            return crypto.randomUUID();
+        }
+
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
 }
