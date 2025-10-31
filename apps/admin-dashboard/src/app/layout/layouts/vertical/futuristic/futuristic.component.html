@@ -59,7 +59,16 @@
             <shortcuts></shortcuts>
             <messages></messages>
             <notifications></notifications>
-</div>
+            <button
+                class="lg:hidden"
+                mat-icon-button
+                (click)="quickChat.toggle()"
+            >
+                <mat-icon
+                    [svgIcon]="'heroicons_outline:chat-bubble-left-right'"
+                ></mat-icon>
+            </button>
+        </div>
     </div>
 
     <!-- Content -->
@@ -82,3 +91,4 @@
 </div>
 
 <!-- Quick chat -->
+<quick-chat #quickChat="quickChat"></quick-chat>

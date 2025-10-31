@@ -37,10 +37,7 @@ export class AuthService {
      * @param email
      */
     forgotPassword(email: string): Observable<any> {
-        return this._httpClient.post(
-            `${environment.apiUrl}/api/identity/forgot-password`,
-            email
-        );
+        return this._httpClient.post('api/auth/forgot-password', email);
     }
 
     /**
@@ -49,10 +46,7 @@ export class AuthService {
      * @param password
      */
     resetPassword(password: string): Observable<any> {
-        return this._httpClient.post(
-            `${environment.apiUrl}/api/identity/reset-password`,
-            password
-        );
+        return this._httpClient.post('api/auth/reset-password', password);
     }
 
     /**
@@ -71,9 +65,7 @@ export class AuthService {
                 `${environment.apiUrl}/api/identity/login`,
                 credentials
             )
-            .pipe(
-                map((response) => this._handleAuthentication(response))
-            );
+            .pipe(map((response) => this._handleAuthentication(response)));
     }
 
     /**
@@ -119,10 +111,7 @@ export class AuthService {
         password: string;
         company: string;
     }): Observable<any> {
-        return this._httpClient.post(
-            `${environment.apiUrl}/api/identity/register`,
-            user
-        );
+        return throwError(() => new Error('Sign up not implemented.'));
     }
 
     /**
@@ -134,10 +123,7 @@ export class AuthService {
         email: string;
         password: string;
     }): Observable<any> {
-        return this._httpClient.post(
-            `${environment.apiUrl}/api/identity/unlock-session`,
-            credentials
-        );
+        return throwError(() => new Error('Unlock session not implemented.'));
     }
 
     /**
@@ -164,16 +150,10 @@ export class AuthService {
     }
 
     private _handleAuthentication(response: LoginResponse): LoginResponse {
-        // Store the access token in the local storage
         this.accessToken = response.accessToken;
-
-        // Set the authenticated flag to true
         this._authenticated = true;
 
-        // Map backend user to app user model
         const user = this._mapToUser(response.user);
-
-        // Store the user on the user service
         this._userService.user = user;
 
         return response;

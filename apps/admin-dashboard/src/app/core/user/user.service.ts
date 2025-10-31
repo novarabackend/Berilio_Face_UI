@@ -52,7 +52,6 @@ export class UserService {
      */
     update(user: User): Observable<any> {
         this._user.next({ ...user });
-
         return of(user);
     }
 

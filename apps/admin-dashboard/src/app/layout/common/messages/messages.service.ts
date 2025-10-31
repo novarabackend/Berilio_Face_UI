@@ -1,19 +1,18 @@
+import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { messages as initialMessages } from 'app/mock-api/common/messages/data';
 import { Message } from 'app/layout/common/messages/messages.types';
-import { Observable, of, ReplaySubject } from 'rxjs';
+import { map, Observable, ReplaySubject, switchMap, take, tap } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class MessagesService {
-    private _messages: ReplaySubject<Message[]> =
-        new ReplaySubject<Message[]>(1);
-    private _store: Message[] = initialMessages.map((message) => ({
-        ...message,
-    }));
+    private _messages: ReplaySubject<Message[]> = new ReplaySubject<Message[]>(
+        1
+    );
 
-    constructor() {
-        this._emit();
-    }
+    /**
+     * Constructor
+     */
+    constructor(private _httpClient: HttpClient) {}
 
     // -----------------------------------------------------------------------------------------------------
     // @ Accessors
@@ -34,8 +33,11 @@ export class MessagesService {
      * Get all messages
      */
     getAll(): Observable<Message[]> {
-        this._emit();
-        return of(this._clone(this._store));
+        return this._httpClient.get<Message[]>('api/common/messages').pipe(
+            tap((messages) => {
+                this._messages.next(messages);
+            })
+        );
     }
 
     /**
@@ -44,17 +46,22 @@ export class MessagesService {
      * @param message
      */
     create(message: Message): Observable<Message> {
-        const newMessage: Message = {
-            ...message,
-            id: message.id ?? this._createId(),
-            time: message.time ?? new Date().toISOString(),
-            read: message.read ?? false,
-        };
+        return this.messages$.pipe(
+            take(1),
+            switchMap((messages) =>
+                this._httpClient
+                    .post<Message>('api/common/messages', { message })
+                    .pipe(
+                        map((newMessage) => {
+                            // Update the messages with the new message
+                            this._messages.next([...messages, newMessage]);
 
-        this._store = [...this._store, newMessage];
-        this._emit();
-
-        return of({ ...newMessage });
+                            // Return the new message from observable
+                            return newMessage;
+                        })
+                    )
+            )
+        );
     }
 
     /**
@@ -64,21 +71,33 @@ export class MessagesService {
      * @param message
      */
     update(id: string, message: Message): Observable<Message> {
-        const index = this._store.findIndex((item) => item.id === id);
+        return this.messages$.pipe(
+            take(1),
+            switchMap((messages) =>
+                this._httpClient
+                    .patch<Message>('api/common/messages', {
+                        id,
+                        message,
+                    })
+                    .pipe(
+                        map((updatedMessage: Message) => {
+                            // Find the index of the updated message
+                            const index = messages.findIndex(
+                                (item) => item.id === id
+                            );
 
-        if (index === -1) {
-            return of({ ...message, id });
-        }
+                            // Update the message
+                            messages[index] = updatedMessage;
 
-        const updated: Message = {
-            ...this._store[index],
-            ...message,
-            id,
-        };
-        this._store[index] = updated;
-        this._emit();
+                            // Update the messages
+                            this._messages.next(messages);
 
-        return of({ ...updated });
+                            // Return the updated message
+                            return updatedMessage;
+                        })
+                    )
+            )
+        );
     }
 
     /**
@@ -87,44 +106,56 @@ export class MessagesService {
      * @param id
      */
     delete(id: string): Observable<boolean> {
-        const initialLength = this._store.length;
-        this._store = this._store.filter((item) => item.id !== id);
-        const isDeleted = this._store.length < initialLength;
-        this._emit();
+        return this.messages$.pipe(
+            take(1),
+            switchMap((messages) =>
+                this._httpClient
+                    .delete<boolean>('api/common/messages', { params: { id } })
+                    .pipe(
+                        map((isDeleted: boolean) => {
+                            // Find the index of the deleted message
+                            const index = messages.findIndex(
+                                (item) => item.id === id
+                            );
 
-        return of(isDeleted);
+                            // Delete the message
+                            messages.splice(index, 1);
+
+                            // Update the messages
+                            this._messages.next(messages);
+
+                            // Return the deleted status
+                            return isDeleted;
+                        })
+                    )
+            )
+        );
     }
 
     /**
      * Mark all messages as read
      */
     markAllAsRead(): Observable<boolean> {
-        this._store = this._store.map((message) => ({
-            ...message,
-            read: true,
-        }));
-        this._emit();
+        return this.messages$.pipe(
+            take(1),
+            switchMap((messages) =>
+                this._httpClient
+                    .get<boolean>('api/common/messages/mark-all-as-read')
+                    .pipe(
+                        map((isUpdated: boolean) => {
+                            // Go through all messages and set them as read
+                            messages.forEach((message, index) => {
+                                messages[index].read = true;
+                            });
 
-        return of(true);
-    }
+                            // Update the messages
+                            this._messages.next(messages);
 
-    // -----------------------------------------------------------------------------------------------------
-    // @ Private methods
-    // -----------------------------------------------------------------------------------------------------
-
-    private _emit(): void {
-        this._messages.next(this._clone(this._store));
-    }
-
-    private _clone(messages: Message[]): Message[] {
-        return messages.map((message) => ({ ...message }));
-    }
-
-    private _createId(): string {
-        if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-            return crypto.randomUUID();
-        }
-
-        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                            // Return the updated status
+                            return isUpdated;
+                        })
+                    )
+            )
+        );
     }
 }
