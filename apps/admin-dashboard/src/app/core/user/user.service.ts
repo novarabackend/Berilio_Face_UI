@@ -1,7 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { User } from 'app/core/user/user.types';
-import { map, Observable, ReplaySubject, tap } from 'rxjs';
+import { environment } from 'environments/environment';
+import { map, Observable, of, ReplaySubject, tap } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
@@ -34,11 +35,14 @@ export class UserService {
      * Get the current signed-in user data
      */
     get(): Observable<User> {
-        return this._httpClient.get<User>('api/common/user').pipe(
-            tap((user) => {
-                this._user.next(user);
-            })
-        );
+        return this._httpClient
+            .get<UserResponse>(`${environment.apiUrl}/api/identity/me`)
+            .pipe(
+                map((response) => this._toUser(response)),
+                tap((user) => {
+                    this._user.next(user);
+                })
+            );
     }
 
     /**
@@ -47,10 +51,33 @@ export class UserService {
      * @param user
      */
     update(user: User): Observable<any> {
-        return this._httpClient.patch<User>('api/common/user', { user }).pipe(
-            map((response) => {
-                this._user.next(response);
-            })
-        );
+        this._user.next({ ...user });
+
+        return of(user);
     }
+
+    private _toUser(response: UserResponse): User {
+        const displayName = response.displayName?.trim();
+
+        return {
+            id: response.id,
+            email: response.email,
+            name:
+                displayName && displayName.length
+                    ? displayName
+                    : `${response.firstName ?? ''} ${response.lastName ?? ''}`.trim(),
+            firstName: response.firstName,
+            lastName: response.lastName,
+            roles: response.roles,
+        };
+    }
+}
+
+interface UserResponse {
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    displayName?: string;
+    roles: string[];
 }

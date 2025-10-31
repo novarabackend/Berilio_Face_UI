@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { AuthUtils } from 'app/core/auth/auth.utils';
 import { UserService } from 'app/core/user/user.service';
-import { catchError, Observable, of, switchMap, throwError } from 'rxjs';
+import { User } from 'app/core/user/user.types';
+import { environment } from 'environments/environment';
+import { catchError, map, Observable, of, tap, throwError } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -35,7 +37,10 @@ export class AuthService {
      * @param email
      */
     forgotPassword(email: string): Observable<any> {
-        return this._httpClient.post('api/auth/forgot-password', email);
+        return this._httpClient.post(
+            `${environment.apiUrl}/api/identity/forgot-password`,
+            email
+        );
     }
 
     /**
@@ -44,7 +49,10 @@ export class AuthService {
      * @param password
      */
     resetPassword(password: string): Observable<any> {
-        return this._httpClient.post('api/auth/reset-password', password);
+        return this._httpClient.post(
+            `${environment.apiUrl}/api/identity/reset-password`,
+            password
+        );
     }
 
     /**
@@ -58,21 +66,14 @@ export class AuthService {
             return throwError('User is already logged in.');
         }
 
-        return this._httpClient.post('api/auth/sign-in', credentials).pipe(
-            switchMap((response: any) => {
-                // Store the access token in the local storage
-                this.accessToken = response.accessToken;
-
-                // Set the authenticated flag to true
-                this._authenticated = true;
-
-                // Store the user on the user service
-                this._userService.user = response.user;
-
-                // Return a new observable with the response
-                return of(response);
-            })
-        );
+        return this._httpClient
+            .post<LoginResponse>(
+                `${environment.apiUrl}/api/identity/login`,
+                credentials
+            )
+            .pipe(
+                map((response) => this._handleAuthentication(response))
+            );
     }
 
     /**
@@ -81,35 +82,15 @@ export class AuthService {
     signInUsingToken(): Observable<any> {
         // Sign in using the token
         return this._httpClient
-            .post('api/auth/sign-in-with-token', {
-                accessToken: this.accessToken,
-            })
+            .get<UserResponse>(`${environment.apiUrl}/api/identity/me`)
             .pipe(
-                catchError(() =>
-                    // Return false
-                    of(false)
-                ),
-                switchMap((response: any) => {
-                    // Replace the access token with the new one if it's available on
-                    // the response object.
-                    //
-                    // This is an added optional step for better security. Once you sign
-                    // in using the token, you should generate a new one on the server
-                    // side and attach it to the response object. Then the following
-                    // piece of code can replace the token with the refreshed one.
-                    if (response.accessToken) {
-                        this.accessToken = response.accessToken;
-                    }
-
-                    // Set the authenticated flag to true
+                map((response) => this._mapToUser(response)),
+                tap((user) => {
                     this._authenticated = true;
-
-                    // Store the user on the user service
-                    this._userService.user = response.user;
-
-                    // Return true
-                    return of(true);
-                })
+                    this._userService.user = user;
+                }),
+                map(() => true),
+                catchError(() => of(false))
             );
     }
 
@@ -138,7 +119,10 @@ export class AuthService {
         password: string;
         company: string;
     }): Observable<any> {
-        return this._httpClient.post('api/auth/sign-up', user);
+        return this._httpClient.post(
+            `${environment.apiUrl}/api/identity/register`,
+            user
+        );
     }
 
     /**
@@ -150,7 +134,10 @@ export class AuthService {
         email: string;
         password: string;
     }): Observable<any> {
-        return this._httpClient.post('api/auth/unlock-session', credentials);
+        return this._httpClient.post(
+            `${environment.apiUrl}/api/identity/unlock-session`,
+            credentials
+        );
     }
 
     /**
@@ -175,4 +162,50 @@ export class AuthService {
         // If the access token exists, and it didn't expire, sign in using it
         return this.signInUsingToken();
     }
+
+    private _handleAuthentication(response: LoginResponse): LoginResponse {
+        // Store the access token in the local storage
+        this.accessToken = response.accessToken;
+
+        // Set the authenticated flag to true
+        this._authenticated = true;
+
+        // Map backend user to app user model
+        const user = this._mapToUser(response.user);
+
+        // Store the user on the user service
+        this._userService.user = user;
+
+        return response;
+    }
+
+    private _mapToUser(user: UserResponse): User {
+        const displayName = user.displayName?.trim();
+
+        return {
+            id: user.id,
+            email: user.email,
+            name:
+                displayName && displayName.length
+                    ? displayName
+                    : `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
+            firstName: user.firstName,
+            lastName: user.lastName,
+            roles: user.roles,
+        };
+    }
+}
+
+interface LoginResponse {
+    accessToken: string;
+    user: UserResponse;
+}
+
+interface UserResponse {
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    displayName?: string;
+    roles: string[];
 }
