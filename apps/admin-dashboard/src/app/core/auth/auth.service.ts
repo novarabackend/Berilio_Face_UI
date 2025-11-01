@@ -111,7 +111,7 @@ export class AuthService {
         password: string;
         company: string;
     }): Observable<any> {
-        return throwError(() => new Error('Sign up not implemented.'));
+        return throwError(() => new Error('Sign up is handled externally.'));
     }
 
     /**
@@ -123,7 +123,7 @@ export class AuthService {
         email: string;
         password: string;
     }): Observable<any> {
-        return throwError(() => new Error('Unlock session not implemented.'));
+        return throwError(() => new Error('Unlock session is handled externally.'));
     }
 
     /**
